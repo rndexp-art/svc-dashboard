@@ -1,0 +1,9 @@
+# Caddy snippet for the dashboard service.
+# Use the production hostname `dashboard.rndexp.art` — `rndexp render --env local`
+# rewrites it to `dashboard.rndexp.localhost` so dev gets HTTPS via Caddy's
+# internal CA and *.localhost auto-resolution.
+
+dashboard.rndexp.art {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8003
+}

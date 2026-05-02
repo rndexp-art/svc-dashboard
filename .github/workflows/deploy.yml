@@ -1,0 +1,18 @@
+name: deploy
+on:
+  push:
+    branches: [production]
+  workflow_dispatch:
+
+jobs:
+  notify-gateway:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch gateway redeploy
+        env:
+          GH_TOKEN: ${{ secrets.GATEWAY_DISPATCH_PAT }}
+        run: |
+          gh api -X POST repos/rndexp-art/rndexpart/dispatches \
+            -f event_type=service-updated \
+            -f 'client_payload[service]=dashboard' \
+            -f 'client_payload[ref]=${{ github.sha }}'
