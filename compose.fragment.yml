@@ -9,10 +9,11 @@
 # per-service status / logs by talking to the docker engine via its UNIX
 # socket (also mounted RO). No SSH key, no extra agent.
 #
-# Group-add 999 grants the non-root `dashboardsvc` user access to the docker
-# socket — that's the typical GID of the `docker` group on Debian/Ubuntu
-# (the Contabo VPS image), and is harmless on macOS Docker Desktop where
-# the socket is owned by a different uid anyway.
+# `group_add` grants the non-root `dashboardsvc` user access to the docker
+# socket. The GID has to match the host's `docker` group; verify with
+# `getent group docker` on the VPS. On the Contabo image it's 988; on a
+# fresh Debian/Ubuntu install it's typically 998 or 999. macOS Docker
+# Desktop ignores it (the socket is owned by a different uid anyway).
 
 services:
   dashboard:
@@ -37,7 +38,7 @@ services:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
     group_add:
-      - "999"
+      - "988"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://127.0.0.1:8003/healthz', timeout=2).status==200 else sys.exit(1)"]
       interval: 30s
