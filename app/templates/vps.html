@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}vps · dashboard · rndexp.art{% endblock %}
+{% block content %}
+<h2>VPS</h2>
+
+<div class="stub">
+  <h3>Wired in Phase 3.</h3>
+  <p>This page will pull live stats from the Contabo host on each page load
+     (no background poller, no extra agent — just SSH against the existing
+     <code>contabo-vps</code> alias):</p>
+  <ul>
+    <li><strong>CPU</strong> — load avg + per-core utilization (<code>top -bn1</code> / <code>/proc/stat</code>).</li>
+    <li><strong>Memory</strong> — <code>free -m</code> with used / cached / available.</li>
+    <li><strong>Storage</strong> — <code>df -h</code> per mount, plus <code>docker system df</code> for image/volume usage.</li>
+    <li><strong>Network</strong> — <code>ss -s</code> connection summary; recent
+        Caddy access log entries (<code>docker exec rndexpart-gateway cat /var/log/...</code>).</li>
+  </ul>
+  <p>Implementation will live in a new <code>app/vps.py</code> module that
+     shells out to <code>tools/rndexp vps exec "&lt;cmd&gt;"</code> via subprocess
+     (the dashboard container will be granted the same SSH key the CLI uses,
+     mounted read-only).</p>
+</div>
+{% endblock %}

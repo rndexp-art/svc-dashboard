@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}projects · dashboard · rndexp.art{% endblock %}
+{% block content %}
+<h2>Projects</h2>
+
+<div class="stub">
+  <h3>Wired in Phase 4.</h3>
+  <p>The "create project" flow (per your spec):</p>
+  <ol>
+    <li>Submit a name + port. Backend calls the GitHub API to create
+        <code>rndexp-art/svc-&lt;name&gt;</code>, scaffolds it from
+        <code>templates/service</code>, and pushes <code>main</code> +
+        <code>production</code>.</li>
+    <li>In the gateway repo, branch <code>feat/add-&lt;name&gt;</code> off
+        <code>production</code> (production is the safe base — <code>main</code>
+        may carry not-yet-deployed work), add the new repo as a submodule,
+        enable it in <code>config/services.yml</code>, commit, push.</li>
+    <li>The card below appears with a <strong>Merge to production</strong>
+        button. Clicking it opens a PR
+        <code>feat/add-&lt;name&gt; → production</code>, merges it (squash),
+        which triggers <code>deploy-gateway.yml</code>; once green, the dashboard
+        fast-forwards <code>main</code> from <code>feat/add-&lt;name&gt;</code> so
+        future PRs see the new submodule too.</li>
+  </ol>
+  <p><em>Pending merges</em> here will list every open <code>feat/add-*</code>
+     branch found via the GitHub API.</p>
+</div>
+
+<form class="card" onsubmit="event.preventDefault(); alert('Phase 4 — backend not wired yet.');">
+  <strong>Create project</strong> (UI preview — not wired)
+  <div style="display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;">
+    <input name="name" placeholder="service name (e.g. wiki)" required pattern="[a-z][a-z0-9-]*" />
+    <input name="port" type="number" min="1024" max="65535" placeholder="port (e.g. 8004)" required />
+    <button type="submit">Create</button>
+  </div>
+</form>
+{% endblock %}

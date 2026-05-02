@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}users · dashboard · rndexp.art{% endblock %}
+{% block content %}
+<h2>Users</h2>
+
+<div class="stub">
+  <h3>Wired in Phase 2.</h3>
+  <p>This page will list every user, let an admin grant/revoke roles, send an
+     email invite (with a link the invitee uses to set a password), trigger a
+     password reset, and delete an account — with a guard that blocks deleting
+     the <em>last</em> user holding the <code>admin</code> role.</p>
+  <p>Backed by new JSON endpoints on <code>svc-auth</code>:
+     <code>GET /api/users</code>, <code>POST /api/users/invite</code>,
+     <code>DELETE /api/users/{id}</code>, <code>POST /api/users/{id}/reset-password</code>,
+     <code>POST /api/users/{id}/roles</code> /
+     <code>DELETE /api/users/{id}/roles/{slug}</code>.</p>
+  <p>The <code>svc-auth</code> change set also adds password login + invite
+     redemption + password reset to the auth service itself.</p>
+</div>
+{% endblock %}

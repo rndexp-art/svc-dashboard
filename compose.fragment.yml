@@ -1,15 +1,23 @@
-# Compose fragment for the dashboard service.
-# Included by the gateway's docker-compose.generated.yml when this service is
-# enabled in config/services.yml. Bind container port to 127.0.0.1 only —
-# Caddy on the host (in --network host mode) will reverse-proxy.
+# Dashboard service compose fragment. Included by the gateway's
+# docker-compose.generated.yml when `dashboard` is enabled in config/services.yml.
+#
+# Caddy reverse-proxies to `dashboard:8003` over the project's default docker
+# network — no public port bindings here.
 
 services:
   dashboard:
-    image: TODO/replace-with-real-image
+    build:
+      # Compose `include:` resolves relative paths in this fragment from the
+      # fragment's own directory — so the build context is this directory.
+      context: .
+      dockerfile: Dockerfile
+    image: rndexpart/dashboard:local
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:8003:8003"
-    # environment:
-    #   FOO: ${dashboard_FOO}
-    # volumes:
-    #   - ./services/dashboard/data:/data
+    expose:
+      - "8003"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://127.0.0.1:8003/healthz', timeout=2).status==200 else sys.exit(1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

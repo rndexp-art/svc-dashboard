@@ -1,9 +1,15 @@
 # Caddy snippet for the dashboard service.
-# Use the production hostname `dashboard.rndexp.art` — `rndexp render --env local`
-# rewrites it to `dashboard.rndexp.localhost` so dev gets HTTPS via Caddy's
-# internal CA and *.localhost auto-resolution.
+# Production hostname `dashboard.rndexp.art` — `rndexp render --env local`
+# rewrites it to `dashboard.rndexp.localhost`.
+#
+# Every path on this site is gated behind a valid `rndexp_auth` cookie via the
+# `rndexp_auth_forward` snippet defined in services/auth/caddy.fragment. The
+# snippet 302s unauthenticated requests to the auth login page, sets a target
+# cookie so the user lands back here after login, and on success injects the
+# X-Auth-* headers our admin gate reads.
 
 dashboard.rndexp.art {
 	encode zstd gzip
-	reverse_proxy 127.0.0.1:8003
+	import rndexp_auth_forward
+	reverse_proxy dashboard:8003
 }

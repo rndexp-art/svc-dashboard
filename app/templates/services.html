@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}services · dashboard · rndexp.art{% endblock %}
+{% block content %}
+<h2>Services</h2>
+
+<div class="stub">
+  <h3>Wired in Phase 3.</h3>
+  <p>One row per service in <code>config/services.yml</code>, sourced from:</p>
+  <ul>
+    <li><strong>Status</strong> — <code>docker ps</code> on the VPS, filtered to the service container.</li>
+    <li><strong>Version pin</strong> — submodule SHA on <code>production</code> (<code>git ls-tree</code>).</li>
+    <li><strong>Recent deploys</strong> — last 10 runs of <code>deploy-gateway.yml</code> via the GitHub Actions API, plus recent commits on the submodule's <code>production</code> branch.</li>
+    <li><strong>Logs</strong> — last N lines from <code>docker compose logs &lt;svc&gt;</code> on the VPS, with a "tail" toggle that opens an SSE stream.</li>
+  </ul>
+  <p>Read-only in Phase 3. Restart / re-render actions land in Phase 3.5 and
+     will gate behind a confirm dialog.</p>
+</div>
+{% endblock %}

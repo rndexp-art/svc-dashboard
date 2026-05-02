@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}overview · dashboard · rndexp.art{% endblock %}
+{% block content %}
+<div class="card">
+  <strong>Welcome.</strong>
+  <p class="muted" style="margin: 6px 0 0">
+    This dashboard is gated behind the auth service: only signed-in users with
+    the <code>admin</code> role can reach any page below <code>/healthz</code>.
+  </p>
+</div>
+
+<h2>Sections</h2>
+<table>
+  <tbody>
+    <tr>
+      <td style="width: 140px;"><a href="/users"><strong>Users</strong></a></td>
+      <td>List, invite, and manage user accounts. Last admin is protected from deletion.</td>
+    </tr>
+    <tr>
+      <td><a href="/vps"><strong>VPS</strong></a></td>
+      <td>CPU / memory / disk / network on the Contabo host.</td>
+    </tr>
+    <tr>
+      <td><a href="/services"><strong>Services</strong></a></td>
+      <td>Per-service status, version pin, recent deploys, container logs.</td>
+    </tr>
+    <tr>
+      <td><a href="/projects"><strong>Projects</strong></a></td>
+      <td>Create a new <code>svc-*</code> repo + submodule on a working branch, then merge to <code>production</code> when ready.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Your session</h2>
+<div class="card">
+  <div><strong>Email:</strong> {{ me.email }}</div>
+  <div><strong>User id:</strong> <code>{{ me.sub }}</code></div>
+  <div style="margin-top: 6px;">
+    <strong>Roles:</strong>
+    {% for r in me.roles %}<span class="pill">{{ r }}</span>{% endfor %}
+  </div>
+  <div>
+    <strong>Permissions:</strong>
+    {% for p in me.permissions %}<span class="pill">{{ p }}</span>{% endfor %}
+  </div>
+</div>
+{% endblock %}
