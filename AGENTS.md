@@ -46,7 +46,20 @@ authorization mechanism in this service — every gated route depends on it.
 | 1 (✓) | Service scaffold, admin gate, skeleton UI for all sections, healthz. |
 | 2 (✓) | Users CRUD: list, invite-by-email, password set on invite click, admin-triggered reset, role grants/revokes, last-admin guard. Calls `svc-auth`'s `/api/users` JSON API, forwarding the operator's session cookie. |
 | 3 (✓) | VPS metrics (cpu / mem / disk / network / uptime / load) by reading bind-mounted `/host/proc` + `/host/sys`. Per-service status, image, pin, container uptime, ports, logs via the docker UNIX socket. Recent deploy-gateway runs + submodule pin metadata via the GitHub API (cached 60s). All pull-on-page-load — no SSH, no extra agent. |
-| 4 | "Create project" flow: GitHub repo + `feat/add-X` working branch off `production`, **Merge to production** button, then fast-forward `main`. |
+| 4 (✓) | Create-project + merge-to-prod flow. The dashboard creates `rndexp-art/svc-<name>` via the GitHub Trees / Refs APIs, scaffolds it by fetching the gateway's `templates/service/` (cached 5min), opens `feat/add-<name>` on the gateway off `production` with the submodule registered, and on **Merge** opens + merges PRs `feat/add-<name>` → `production` (deploys) and `production` → `main` (so main sees the new submodule too). All over the GitHub API — no git binary, no SSH key, no local clone inside the dashboard container. |
+
+## Phase 4 — projects flow
+
+The dashboard mirrors what `tools/rndexp service add` does on the user's laptop, but via the GitHub API only:
+
+1. **Create**: validate name + port, refuse if `rndexp-art/svc-<name>` or `feat/add-<name>` already exist, then in order:
+   - `POST /orgs/<org>/repos` — empty repo, no auto_init
+   - blob + tree + commit + refs API to make a single seed commit on `main` and `production`, with `<NAME>`/`<PORT>` substituted from `templates/service/` on the gateway's `main`
+   - on the gateway repo: read production's tree, mutate `.gitmodules` and `config/services.yml` in memory, build a new tree that *also* adds `services/<name>` as a `mode: 160000` gitlink pointing at the new repo's seed commit, commit it on top of production, and create `feat/add-<name>` from that commit.
+2. **List pending**: enumerate gateway branches matching `feat/add-*`.
+3. **Merge**: open + merge a PR `feat/add-<name>` → `production` (which triggers the standard `deploy-gateway` workflow), then open + merge a PR `production` → `main` so main carries the submodule too. Skipped silently if the two are already even.
+
+The whole thing lives in `app/projects.py` and only depends on the same `GITHUB_PAT` we already use for the deploy-history view.
 
 ## Phase 3 — how the monitoring works
 

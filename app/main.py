@@ -23,7 +23,7 @@ from fastapi.templating import Jinja2Templates
 
 from .auth import AuthedUser, require_admin
 from .auth_client import AuthClient
-from . import docker_client, github_client, vps_metrics
+from . import docker_client, github_client, projects, vps_metrics
 from .docker_client import DockerUnavailable
 
 
@@ -269,5 +269,72 @@ def service_stats(
 
 
 @app.get("/projects", response_class=HTMLResponse)
-def projects_page(request: Request, me: Annotated[AuthedUser, Depends(require_admin)]):
-    return _section(request, me, "projects")
+def projects_page(
+    request: Request,
+    me: Annotated[AuthedUser, Depends(require_admin)],
+    flash: str = "",
+    error: str = "",
+    repo_url: str = "",
+    branch_url: str = "",
+    feat_pr_url: str = "",
+    main_pr_url: str = "",
+):
+    pending = []
+    pending_error: str | None = None
+    if github_client.gh_configured():
+        try:
+            pending = projects.list_pending_branches()
+        except HTTPException as e:
+            pending_error = f"{e.status_code}: {e.detail}"
+    return _section(request, me, "projects", {
+        "gh_configured": github_client.gh_configured(),
+        "pending": pending,
+        "pending_error": pending_error,
+        "flash": flash,
+        "error": error,
+        "repo_url": repo_url,
+        "branch_url": branch_url,
+        "feat_pr_url": feat_pr_url,
+        "main_pr_url": main_pr_url,
+    })
+
+
+def _projects_redirect(**params: str) -> RedirectResponse:
+    from urllib.parse import urlencode
+    qs = ("?" + urlencode({k: v for k, v in params.items() if v})) if any(params.values()) else ""
+    return RedirectResponse(url=f"/projects{qs}", status_code=303)
+
+
+@app.post("/projects/create")
+def projects_create(
+    request: Request,
+    _: Annotated[AuthedUser, Depends(require_admin)],
+    name: Annotated[str, Form()],
+    port: Annotated[int, Form()],
+):
+    try:
+        result = projects.create_service(name=name, port=port)
+    except HTTPException as e:
+        return _projects_redirect(error=f"{e.status_code}: {e.detail}")
+    return _projects_redirect(
+        flash=f"Created svc-{result.name} and feat branch {result.feat_branch}.",
+        repo_url=result.repo_html_url,
+        branch_url=result.feat_branch_url,
+    )
+
+
+@app.post("/projects/{name}/merge")
+def projects_merge(
+    name: str,
+    request: Request,
+    _: Annotated[AuthedUser, Depends(require_admin)],
+):
+    try:
+        result = projects.merge_to_production(name)
+    except HTTPException as e:
+        return _projects_redirect(error=f"{e.status_code}: {e.detail}")
+    return _projects_redirect(
+        flash="; ".join(result.notes),
+        feat_pr_url=result.feat_to_prod_pr_url,
+        main_pr_url=result.prod_to_main_pr_url,
+    )
