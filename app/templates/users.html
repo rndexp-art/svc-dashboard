@@ -3,18 +3,98 @@
 {% block content %}
 <h2>Users</h2>
 
-<div class="stub">
-  <h3>Wired in Phase 2.</h3>
-  <p>This page will list every user, let an admin grant/revoke roles, send an
-     email invite (with a link the invitee uses to set a password), trigger a
-     password reset, and delete an account — with a guard that blocks deleting
-     the <em>last</em> user holding the <code>admin</code> role.</p>
-  <p>Backed by new JSON endpoints on <code>svc-auth</code>:
-     <code>GET /api/users</code>, <code>POST /api/users/invite</code>,
-     <code>DELETE /api/users/{id}</code>, <code>POST /api/users/{id}/reset-password</code>,
-     <code>POST /api/users/{id}/roles</code> /
-     <code>DELETE /api/users/{id}/roles/{slug}</code>.</p>
-  <p>The <code>svc-auth</code> change set also adds password login + invite
-     redemption + password reset to the auth service itself.</p>
+{% if flash %}
+<div class="card" style="border-color: rgba(34,139,87,.5); background: rgba(34,139,87,.06)">
+  <strong>{{ flash }}</strong>
+  {% if invite_url %}
+    <p class="muted" style="margin: 6px 0 0">
+      SMTP is not configured, so this link wasn't emailed. Copy it for {{ invite_email }}:
+    </p>
+    <p style="margin: 8px 0 0">
+      <code style="user-select: all; word-break: break-all">{{ invite_url }}</code>
+    </p>
+  {% elif invite_email_sent %}
+    <p class="muted" style="margin: 6px 0 0">Email sent to {{ invite_email }}.</p>
+  {% endif %}
 </div>
+{% endif %}
+
+<div class="card">
+  <strong>Invite a user</strong>
+  <form action="/users/invite" method="post" style="display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; align-items: center;">
+    <input name="email" type="email" placeholder="email@example.com" required style="flex: 1; min-width: 220px;" />
+    <fieldset style="border: 1px solid rgba(127,127,127,.25); border-radius: 6px; padding: 6px 10px; display: flex; gap: 10px; align-items: center;">
+      <span class="muted" style="font-size: 11px;">grant roles</span>
+      {% for r in roles %}
+        <label style="font-size: 12px; display: flex; gap: 4px; align-items: center;">
+          <input type="checkbox" name="roles" value="{{ r }}" /> {{ r }}
+        </label>
+      {% endfor %}
+    </fieldset>
+    <button type="submit">Send invite</button>
+  </form>
+  <p class="muted" style="margin: 8px 0 0; font-size: 11px;">
+    Invite links expire in 7 days. The new user picks their own password on the link.
+  </p>
+</div>
+
+<table style="margin-top: 18px;">
+  <thead>
+    <tr>
+      <th>Email</th>
+      <th>Roles</th>
+      <th>Auth</th>
+      <th>Last login</th>
+      <th style="width: 360px;">Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for u in users %}
+    <tr>
+      <td>
+        <strong>{{ u.email }}</strong>
+        {% if u.name %}<div class="muted" style="font-size: 11px;">{{ u.name }}</div>{% endif %}
+      </td>
+      <td>
+        {% for r in u.roles %}
+          <span class="pill">{{ r }}</span>
+          <form action="/users/{{ u.id }}/roles/{{ r }}/revoke" method="post" style="display: inline;">
+            <button type="submit" title="Revoke `{{ r }}`" style="padding: 0 6px; font-size: 10px; vertical-align: middle;">×</button>
+          </form>
+        {% endfor %}
+        <form action="/users/{{ u.id }}/roles" method="post" style="display: inline-flex; gap: 4px; margin-top: 4px;">
+          <select name="role_slug">
+            {% for r in roles %}
+              {% if r not in u.roles %}<option value="{{ r }}">{{ r }}</option>{% endif %}
+            {% endfor %}
+          </select>
+          <button type="submit" style="padding: 2px 8px; font-size: 11px;">+ grant</button>
+        </form>
+      </td>
+      <td style="font-size: 11px;">
+        {% if u.has_google %}<span class="pill">google</span>{% endif %}
+        {% if u.has_password %}<span class="pill">password</span>{% endif %}
+        {% if not u.has_google and not u.has_password %}
+          <span class="muted">invite pending</span>
+        {% endif %}
+      </td>
+      <td class="muted" style="font-size: 11px;">{{ u.last_login_at }}</td>
+      <td>
+        <form action="/users/{{ u.id }}/reset-password" method="post" style="display: inline;">
+          <button type="submit" style="font-size: 11px;">Send reset link</button>
+        </form>
+        <form action="/users/{{ u.id }}/delete" method="post" style="display: inline;"
+              onsubmit="return confirm('Permanently delete {{ u.email }}? This cannot be undone.');">
+          <button type="submit" style="font-size: 11px; color: #b91c1c;">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<p class="muted" style="margin-top: 14px; font-size: 11px;">
+  All actions go through <code>svc-auth</code>'s admin API; the last user holding
+  the <code>admin</code> role is protected from deletion and from losing that role.
+</p>
 {% endblock %}

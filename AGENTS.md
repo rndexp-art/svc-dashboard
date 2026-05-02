@@ -44,7 +44,7 @@ authorization mechanism in this service — every gated route depends on it.
 | Phase | What lands |
 |---|---|
 | 1 (✓) | Service scaffold, admin gate, skeleton UI for all sections, healthz. |
-| 2 | Users CRUD: list, invite-by-email, password set on invite click, password reset, role grants/revokes, last-admin delete guard. Backed by new JSON endpoints + email/password support added to `svc-auth`. |
+| 2 (✓) | Users CRUD: list, invite-by-email, password set on invite click, admin-triggered reset, role grants/revokes, last-admin guard. Calls `svc-auth`'s `/api/users` JSON API, forwarding the operator's session cookie. |
 | 3 | VPS metrics (cpu/mem/disk/network) + per-service status, version pin, recent deploys, container logs. Pulled live on each page load via SSH against `contabo-vps`. |
 | 4 | "Create project" flow: GitHub repo + `feat/add-X` working branch off `production`, **Merge to production** button, then fast-forward `main`. |
 
@@ -52,11 +52,10 @@ The skeleton templates already document each phase's plan inline.
 
 ## Required env vars
 
-None in Phase 1. Phase 2+ will add:
-
 | Var | Purpose | Phase |
 |---|---|---|
-| `AUTH_INTERNAL_BASE_URL` | Where the dashboard backend reaches `svc-auth` for the new JSON CRUD API. Defaults to `http://auth:8001`. | 2 |
+| `AUTH_INTERNAL_BASE_URL` | Where the dashboard reaches `svc-auth`'s JSON API. Defaults to `http://auth:8001`. The user's `rndexp_auth` cookie is forwarded with every call so the auth service can authorize as that admin. | 2 |
+| `AUTH_COOKIE_NAME` | Name of the auth cookie to forward. Defaults to `rndexp_auth`. | 2 |
 | `GITHUB_PAT` | Same PAT `tools/rndexp` uses; needed for repo creation + PR merges in the projects flow. | 4 |
 | `DASHBOARD_VPS_SSH_KEY_PATH` | Path inside the container to the SSH key for the VPS metrics queries. | 3 |
 
