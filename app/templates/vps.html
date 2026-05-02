@@ -3,21 +3,124 @@
 {% block content %}
 <h2>VPS</h2>
 
+{% if not host_available %}
 <div class="stub">
-  <h3>Wired in Phase 3.</h3>
-  <p>This page will pull live stats from the Contabo host on each page load
-     (no background poller, no extra agent — just SSH against the existing
-     <code>contabo-vps</code> alias):</p>
-  <ul>
-    <li><strong>CPU</strong> — load avg + per-core utilization (<code>top -bn1</code> / <code>/proc/stat</code>).</li>
-    <li><strong>Memory</strong> — <code>free -m</code> with used / cached / available.</li>
-    <li><strong>Storage</strong> — <code>df -h</code> per mount, plus <code>docker system df</code> for image/volume usage.</li>
-    <li><strong>Network</strong> — <code>ss -s</code> connection summary; recent
-        Caddy access log entries (<code>docker exec rndexpart-gateway cat /var/log/...</code>).</li>
-  </ul>
-  <p>Implementation will live in a new <code>app/vps.py</code> module that
-     shells out to <code>tools/rndexp vps exec "&lt;cmd&gt;"</code> via subprocess
-     (the dashboard container will be granted the same SSH key the CLI uses,
-     mounted read-only).</p>
+  <h3>Host metrics unavailable.</h3>
+  <p>The dashboard reads <code>/proc</code> and <code>/sys</code> from the host
+     via bind mounts. They aren't reachable from this container — typical
+     when running on Docker Desktop on macOS, or if the
+     <code>/host/proc</code> mount in <code>compose.fragment.yml</code> is missing.</p>
 </div>
+{% else %}
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-top: 14px;">
+
+  {# --- CPU --- #}
+  <div class="card">
+    <h3 style="margin: 0 0 4px; font-size: 13px;">CPU</h3>
+    <div style="font-size: 22px; font-weight: 600;">{{ cpu.busy_pct }}%</div>
+    <div class="muted" style="font-size: 11px;">
+      {{ cpu.cores }} cores · user {{ cpu.user_pct }}% · sys {{ cpu.system_pct }}% · iowait {{ cpu.iowait_pct }}%
+    </div>
+    <div class="muted" style="font-size: 11px; margin-top: 4px;">
+      load: {{ cpu.load_1m }} · {{ cpu.load_5m }} · {{ cpu.load_15m }}
+    </div>
+    <div style="height: 6px; background: rgba(127,127,127,.18); border-radius: 999px; margin-top: 8px; overflow: hidden;">
+      <div style="height: 100%; width: {{ cpu.busy_pct }}%; background: {% if cpu.busy_pct > 80 %}#dc2626{% elif cpu.busy_pct > 50 %}#f59e0b{% else %}#10b981{% endif %};"></div>
+    </div>
+  </div>
+
+  {# --- Memory --- #}
+  <div class="card">
+    <h3 style="margin: 0 0 4px; font-size: 13px;">Memory</h3>
+    <div style="font-size: 22px; font-weight: 600;">{{ memory.used_pct }}%</div>
+    <div class="muted" style="font-size: 11px;">
+      {{ memory.used_mb }} / {{ memory.total_mb }} MB used · {{ memory.cached_mb }} MB cached
+    </div>
+    <div class="muted" style="font-size: 11px; margin-top: 4px;">
+      swap: {{ memory.swap_used_mb }} / {{ memory.swap_total_mb }} MB
+    </div>
+    <div style="height: 6px; background: rgba(127,127,127,.18); border-radius: 999px; margin-top: 8px; overflow: hidden;">
+      <div style="height: 100%; width: {{ memory.used_pct }}%; background: {% if memory.used_pct > 85 %}#dc2626{% elif memory.used_pct > 65 %}#f59e0b{% else %}#10b981{% endif %};"></div>
+    </div>
+  </div>
+
+  {# --- Uptime --- #}
+  <div class="card">
+    <h3 style="margin: 0 0 4px; font-size: 13px;">Uptime</h3>
+    <div style="font-size: 22px; font-weight: 600;">{{ uptime }}</div>
+    <div class="muted" style="font-size: 11px;">since boot</div>
+  </div>
+
+  {# --- Network sockets --- #}
+  <div class="card">
+    <h3 style="margin: 0 0 4px; font-size: 13px;">TCP sockets</h3>
+    <div style="font-size: 22px; font-weight: 600;">{{ network.tcp_established }}</div>
+    <div class="muted" style="font-size: 11px;">established · {{ network.tcp_listening }} listening</div>
+  </div>
+
+</div>
+
+{# --- Disk --- #}
+<h2>Storage</h2>
+<table>
+  <thead>
+    <tr><th>Mount</th><th>FS</th><th>Used</th><th>Total</th><th>Used %</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for d in disk.mounts %}
+    <tr>
+      <td><code>{{ d.mount }}</code></td>
+      <td class="muted">{{ d.fs }}</td>
+      <td>{{ d.used_gb }} GB</td>
+      <td class="muted">{{ d.total_gb }} GB</td>
+      <td>{{ d.used_pct }}%</td>
+      <td style="width: 200px;">
+        <div style="height: 6px; background: rgba(127,127,127,.18); border-radius: 999px; overflow: hidden;">
+          <div style="height: 100%; width: {{ d.used_pct }}%; background: {% if d.used_pct > 85 %}#dc2626{% elif d.used_pct > 65 %}#f59e0b{% else %}#10b981{% endif %};"></div>
+        </div>
+      </td>
+    </tr>
+    {% endfor %}
+    {% if not disk.mounts %}
+    <tr><td colspan="6" class="muted">No filesystems visible to the dashboard container. The disk row reflects what the dashboard can <code>statvfs</code> from inside its own namespace; for an exact host <code>df</code>, SSH in.</td></tr>
+    {% endif %}
+  </tbody>
+</table>
+
+{# --- Network interfaces --- #}
+<h2>Network interfaces</h2>
+<table>
+  <thead>
+    <tr><th>Interface</th><th>RX</th><th>TX</th><th>RX pkts</th><th>TX pkts</th><th>Errors</th></tr>
+  </thead>
+  <tbody>
+    {% for i in network.interfaces %}
+    <tr>
+      <td><strong>{{ i.name }}</strong></td>
+      <td>{{ i.rx_mb }} MB</td>
+      <td>{{ i.tx_mb }} MB</td>
+      <td class="muted">{{ i.rx_packets }}</td>
+      <td class="muted">{{ i.tx_packets }}</td>
+      <td>
+        {% if i.rx_errors or i.tx_errors %}
+          <span style="color: #dc2626;">{{ i.rx_errors }} rx / {{ i.tx_errors }} tx</span>
+        {% else %}
+          <span class="muted">0</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    {% if not network.interfaces %}
+    <tr><td colspan="6" class="muted">No physical interfaces found.</td></tr>
+    {% endif %}
+  </tbody>
+</table>
+
+<p class="muted" style="margin-top: 14px; font-size: 11px;">
+  Counters are cumulative since the host last booted. Refresh the page for the
+  latest snapshot — no live polling.
+</p>
+
+{% endif %}
 {% endblock %}

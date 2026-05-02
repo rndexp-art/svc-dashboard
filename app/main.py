@@ -23,6 +23,8 @@ from fastapi.templating import Jinja2Templates
 
 from .auth import AuthedUser, require_admin
 from .auth_client import AuthClient
+from . import docker_client, github_client, vps_metrics
+from .docker_client import DockerUnavailable
 
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -183,12 +185,87 @@ def users_revoke_role(
 
 @app.get("/vps", response_class=HTMLResponse)
 def vps_page(request: Request, me: Annotated[AuthedUser, Depends(require_admin)]):
-    return _section(request, me, "vps")
+    return _section(request, me, "vps", {
+        "host_available": vps_metrics.host_metrics_available(),
+        "cpu": vps_metrics.cpu(),
+        "memory": vps_metrics.memory(),
+        "disk": vps_metrics.disk(),
+        "network": vps_metrics.network(),
+        "uptime": vps_metrics.humanize_uptime(vps_metrics.uptime_seconds()),
+    })
 
 
 @app.get("/services", response_class=HTMLResponse)
 def services_page(request: Request, me: Annotated[AuthedUser, Depends(require_admin)]):
-    return _section(request, me, "services")
+    services: list[docker_client.ContainerInfo] = []
+    docker_error: str | None = None
+    try:
+        services = docker_client.list_services()
+    except DockerUnavailable as e:
+        docker_error = str(e)
+
+    pins = github_client.submodule_pins(branch="production")
+    pins_by_name = {p.path.removeprefix("services/"): p for p in pins}
+
+    runs = github_client.recent_runs("deploy-gateway.yml", per_page=10)
+
+    return _section(request, me, "services", {
+        "services": services,
+        "docker_error": docker_error,
+        "pins_by_name": pins_by_name,
+        "runs": runs,
+        "gh_configured": github_client.gh_configured(),
+        "humanize_uptime": docker_client.humanize_uptime,
+    })
+
+
+@app.get("/services/{name}/logs", response_class=HTMLResponse)
+def service_logs(
+    name: str,
+    request: Request,
+    me: Annotated[AuthedUser, Depends(require_admin)],
+    tail: int = 200,
+):
+    """Plain-text log dump for one container. Rendered inline in services.html
+    via a <details> element on the service row.
+    """
+    try:
+        text = docker_client.logs(name, tail=tail)
+    except DockerUnavailable as e:
+        text = f"docker unavailable: {e}"
+    # Embed in a minimal page so it can be opened standalone in a tab too.
+    return HTMLResponse(
+        f"<!doctype html><meta charset=utf-8>"
+        f"<title>{name} logs · dashboard</title>"
+        f"<style>body{{font:12px/1.4 ui-monospace,monospace;margin:16px;white-space:pre-wrap;word-break:break-all}}</style>"
+        f"<body>{_html_escape(text) or '(no log lines)'}</body>"
+    )
+
+
+def _html_escape(s: str) -> str:
+    return (s.replace("&", "&amp;").replace("<", "&lt;")
+              .replace(">", "&gt;").replace("\"", "&quot;"))
+
+
+@app.get("/services/{name}/stats")
+def service_stats(
+    name: str,
+    me: Annotated[AuthedUser, Depends(require_admin)],
+):
+    """JSON endpoint for ad-hoc polling later. Used by the row's CPU% cell
+    if/when we wire a tiny refresh script. Today the page renders these
+    server-side on initial load."""
+    try:
+        s = docker_client.stats(name)
+    except DockerUnavailable as e:
+        return {"available": False, "error": str(e)}
+    return {
+        "available": s.available,
+        "cpu_pct": s.cpu_pct,
+        "mem_used_mb": s.mem_used_mb,
+        "mem_limit_mb": s.mem_limit_mb,
+        "mem_pct": s.mem_pct,
+    }
 
 
 @app.get("/projects", response_class=HTMLResponse)

@@ -3,16 +3,131 @@
 {% block content %}
 <h2>Services</h2>
 
+{% if docker_error %}
 <div class="stub">
-  <h3>Wired in Phase 3.</h3>
-  <p>One row per service in <code>config/services.yml</code>, sourced from:</p>
+  <h3>Docker socket unavailable.</h3>
+  <p>The dashboard couldn't reach <code>/var/run/docker.sock</code>:
+     <code>{{ docker_error }}</code>.</p>
+  <p>Two common causes:</p>
   <ul>
-    <li><strong>Status</strong> — <code>docker ps</code> on the VPS, filtered to the service container.</li>
-    <li><strong>Version pin</strong> — submodule SHA on <code>production</code> (<code>git ls-tree</code>).</li>
-    <li><strong>Recent deploys</strong> — last 10 runs of <code>deploy-gateway.yml</code> via the GitHub Actions API, plus recent commits on the submodule's <code>production</code> branch.</li>
-    <li><strong>Logs</strong> — last N lines from <code>docker compose logs &lt;svc&gt;</code> on the VPS, with a "tail" toggle that opens an SSE stream.</li>
+    <li>the bind mount in <code>compose.fragment.yml</code> is missing
+        (re-render and <code>up -d --build</code> from the gateway), or</li>
+    <li>the dashboard's user isn't in the host's <code>docker</code> group —
+        adjust <code>group_add</code> if your VPS uses a non-999 GID
+        (<code>getent group docker</code> on the host).</li>
   </ul>
-  <p>Read-only in Phase 3. Restart / re-render actions land in Phase 3.5 and
-     will gate behind a confirm dialog.</p>
 </div>
+{% else %}
+
+<table>
+  <thead>
+    <tr>
+      <th>Service</th>
+      <th>Status</th>
+      <th>Image / pin</th>
+      <th>Uptime</th>
+      <th>Ports</th>
+      <th style="width: 220px;">Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for s in services %}
+    {% set pin = pins_by_name.get(s.name) %}
+    <tr>
+      <td>
+        <strong>{{ s.name }}</strong>
+        <div class="muted" style="font-size: 11px;">{{ s.container_name }}</div>
+      </td>
+      <td>
+        {% if s.status == "running" %}
+          <span class="pill" style="background: rgba(16,185,129,.18); color: #047857;">{{ s.status }}</span>
+        {% elif s.status in ("exited", "dead") %}
+          <span class="pill" style="background: rgba(220,38,38,.18); color: #991b1b;">{{ s.status }}</span>
+        {% else %}
+          <span class="pill" style="background: rgba(245,158,11,.18); color: #92400e;">{{ s.status }}</span>
+        {% endif %}
+        {% if s.health %}
+          <span class="pill" style="font-size: 10px;">{{ s.health }}</span>
+        {% endif %}
+      </td>
+      <td style="font-size: 11px;">
+        <div class="muted" style="word-break: break-all;">{{ s.image }}</div>
+        {% if pin and pin.repo %}
+          <div style="margin-top: 4px;">
+            pin:
+            {% if pin.commit_html_url %}
+              <a href="{{ pin.commit_html_url }}" target="_blank"><code>{{ pin.short_sha }}</code></a>
+            {% else %}
+              <code>{{ pin.short_sha }}</code>
+            {% endif %}
+            {% if pin.commit_message %}
+              <div class="muted" style="font-size: 10px; margin-top: 2px;">{{ pin.commit_message }}</div>
+            {% endif %}
+          </div>
+        {% endif %}
+      </td>
+      <td class="muted" style="font-size: 11px;">{{ humanize_uptime(s.started_at) }}</td>
+      <td style="font-size: 11px;">
+        {% for p in s.ports %}
+          <div><code>{{ p }}</code></div>
+        {% endfor %}
+        {% if not s.ports %}<span class="muted">internal</span>{% endif %}
+      </td>
+      <td>
+        <a href="/services/{{ s.name }}/logs" target="_blank" style="font-size: 11px;">Logs ↗</a>
+      </td>
+    </tr>
+    {% endfor %}
+    {% if not services %}
+    <tr><td colspan="6" class="muted">No containers in the gateway compose project.</td></tr>
+    {% endif %}
+  </tbody>
+</table>
+
+<h2>Recent gateway deploys</h2>
+{% if not gh_configured %}
+<div class="stub">
+  <h3>GitHub PAT not configured.</h3>
+  <p>Set <code>GITHUB_PAT</code> in the gateway env (it's pushed to the dashboard
+     container as <code>DASHBOARD_GH_PAT</code>) to see deploy history and
+     submodule pin metadata.</p>
+</div>
+{% else %}
+<table>
+  <thead>
+    <tr><th>When</th><th>Branch</th><th>Trigger</th><th>SHA</th><th>Actor</th><th>Result</th></tr>
+  </thead>
+  <tbody>
+    {% for r in runs %}
+    <tr>
+      <td class="muted" style="font-size: 11px;">{{ r.updated_at or r.created_at }}</td>
+      <td><code>{{ r.head_branch }}</code></td>
+      <td class="muted" style="font-size: 11px;">{{ r.event }}</td>
+      <td><code>{{ r.head_sha }}</code></td>
+      <td class="muted">{{ r.actor }}</td>
+      <td>
+        {% if r.status != "completed" %}
+          <span class="pill" style="background: rgba(245,158,11,.18); color: #92400e;">{{ r.status }}</span>
+        {% elif r.conclusion == "success" %}
+          <span class="pill" style="background: rgba(16,185,129,.18); color: #047857;">success</span>
+        {% else %}
+          <span class="pill" style="background: rgba(220,38,38,.18); color: #991b1b;">{{ r.conclusion }}</span>
+        {% endif %}
+        <a href="{{ r.html_url }}" target="_blank" style="font-size: 11px; margin-left: 6px;">↗</a>
+      </td>
+    </tr>
+    {% endfor %}
+    {% if not runs %}
+    <tr><td colspan="6" class="muted">No recent runs.</td></tr>
+    {% endif %}
+  </tbody>
+</table>
+{% endif %}
+
+<p class="muted" style="margin-top: 14px; font-size: 11px;">
+  Container info comes straight from the local docker socket; pins + deploy
+  history are fetched from GitHub each page load (cached 60s).
+</p>
+
+{% endif %}
 {% endblock %}

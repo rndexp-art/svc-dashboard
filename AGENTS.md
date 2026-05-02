@@ -45,8 +45,17 @@ authorization mechanism in this service — every gated route depends on it.
 |---|---|
 | 1 (✓) | Service scaffold, admin gate, skeleton UI for all sections, healthz. |
 | 2 (✓) | Users CRUD: list, invite-by-email, password set on invite click, admin-triggered reset, role grants/revokes, last-admin guard. Calls `svc-auth`'s `/api/users` JSON API, forwarding the operator's session cookie. |
-| 3 | VPS metrics (cpu/mem/disk/network) + per-service status, version pin, recent deploys, container logs. Pulled live on each page load via SSH against `contabo-vps`. |
+| 3 (✓) | VPS metrics (cpu / mem / disk / network / uptime / load) by reading bind-mounted `/host/proc` + `/host/sys`. Per-service status, image, pin, container uptime, ports, logs via the docker UNIX socket. Recent deploy-gateway runs + submodule pin metadata via the GitHub API (cached 60s). All pull-on-page-load — no SSH, no extra agent. |
 | 4 | "Create project" flow: GitHub repo + `feat/add-X` working branch off `production`, **Merge to production** button, then fast-forward `main`. |
+
+## Phase 3 — how the monitoring works
+
+The dashboard runs on the same VPS as everything it monitors, so we skipped SSH entirely:
+
+- **VPS metrics** (`app/vps_metrics.py`): the host's `/proc` and `/sys` are bind-mounted at `/host/proc` and `/host/sys` (RO). CPU is sampled twice with a ~150ms gap to compute a real busy %. Memory, disk, network, uptime, and load average all come from straightforward file reads. On macOS / non-Linux, every probe returns `available=False` and the page renders a muted placeholder.
+- **Per-service info** (`app/docker_client.py`): the docker daemon's UNIX socket is bind-mounted at `/var/run/docker.sock` (RO). Containers are filtered by `com.docker.compose.project=$DASHBOARD_DOCKER_PROJECT` so we only list the gateway's own services. CPU%/mem stats use docker's `one_shot` API. Logs use the same SDK; the dashboard exposes them at `/services/{name}/logs?tail=N`.
+- **Pins + deploy history** (`app/github_client.py`): the GitHub API returns submodule entries inline when you list a directory, so `GET /repos/.../contents/services?ref=production` gives every pin in one shot. Deploy runs come from `/repos/.../actions/workflows/deploy-gateway.yml/runs`. Both calls are cached 60s in process memory to keep page loads off the rate limit.
+- The non-root `dashboardsvc` user gets `group_add: ["999"]` in compose so it can read the docker socket. 999 is the typical Debian/Ubuntu `docker` group GID; if your VPS image differs, override the GID.
 
 The skeleton templates already document each phase's plan inline.
 
@@ -56,8 +65,12 @@ The skeleton templates already document each phase's plan inline.
 |---|---|---|
 | `AUTH_INTERNAL_BASE_URL` | Where the dashboard reaches `svc-auth`'s JSON API. Defaults to `http://auth:8001`. The user's `rndexp_auth` cookie is forwarded with every call so the auth service can authorize as that admin. | 2 |
 | `AUTH_COOKIE_NAME` | Name of the auth cookie to forward. Defaults to `rndexp_auth`. | 2 |
+| `DASHBOARD_HOST_PROC` | Where `/proc` is bind-mounted inside the container. Defaults to `/host/proc`. | 3 |
+| `DASHBOARD_HOST_SYS` | Where `/sys` is bind-mounted. Defaults to `/host/sys`. | 3 |
+| `DASHBOARD_DOCKER_PROJECT` | Compose project label to filter containers by. Defaults to `rndexpart`. | 3 |
+| `DASHBOARD_GH_REPO` | Gateway repo slug for the GitHub API calls. Defaults to `rndexp-art/rndexpart`. | 3 |
+| `DASHBOARD_GH_PAT` (or `GITHUB_PAT`) | PAT for GitHub API. Without it, deploy-history + pin-metadata sections render an empty-state hint. | 3 |
 | `GITHUB_PAT` | Same PAT `tools/rndexp` uses; needed for repo creation + PR merges in the projects flow. | 4 |
-| `DASHBOARD_VPS_SSH_KEY_PATH` | Path inside the container to the SSH key for the VPS metrics queries. | 3 |
 
 ## How deploys work
 
