@@ -74,7 +74,8 @@
       <td style="font-size: 11px;">
         {% if u.has_google %}<span class="pill">google</span>{% endif %}
         {% if u.has_password %}<span class="pill">password</span>{% endif %}
-        {% if not u.has_google and not u.has_password %}
+        {% if u.has_telegram %}<span class="pill">telegram</span>{% endif %}
+        {% if not u.has_google and not u.has_password and not u.has_telegram %}
           <span class="muted">invite pending</span>
         {% endif %}
       </td>
